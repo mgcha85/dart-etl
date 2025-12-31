@@ -4,6 +4,8 @@ import sys
 import json
 import sqlite3
 import datetime
+import zipfile
+import io
 # import langextract as lx # Commented out to avoid import errors if not installed, but strictly speaking this should be here.
 # For the purpose of this file creation, I will include it.
 import textwrap
@@ -61,21 +63,43 @@ def main():
 
     print(f"Processing {args.rcept_no} from {args.file}...")
 
-    # 1. Read Content (Simplification: Assuming text extraction is needed first or file is raw text)
-    # LangExtract usually takes text. If it is a ZIP/XML, we might need to parse it first.
-    # For DART XML, we should ideally extract the text content from the XML.
-    # For this MVP, let's assume we can read the file as text or use a simple parser.
-    # TODO: Add robust XML text extraction. Here we just read plain text for demo or passing file URL if supported.
-    # DART XMLs are complex. Let's assume we read the raw content.
-    
+    # 1. Read Content (Unzip and find largest XML/TXT)
+    content = ""
     try:
-        with open(args.file, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
+        if args.file.endswith('.zip'):
+            with zipfile.ZipFile(args.file, 'r') as z:
+                # Find largest file assuming it's the main document
+                file_list = z.infolist()
+                if not file_list:
+                    print("Empty zip file")
+                    sys.exit(1)
+                
+                # Sort by size desc
+                file_list.sort(key=lambda x: x.file_size, reverse=True)
+                target_file = file_list[0]
+                
+                print(f"Extracting content from {target_file.filename} ({target_file.file_size} bytes)")
+                with z.open(target_file) as f:
+                    # DART XML is usually utf-8 or euc-kr. Try utf-8 first.
+                    raw_bytes = f.read()
+                    try:
+                        content = raw_bytes.decode('utf-8')
+                    except UnicodeDecodeError:
+                        content = raw_bytes.decode('euc-kr', errors='ignore')
+        else:
+            # Assume text/xml file
+            with open(args.file, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+                
     except Exception as e:
-        print(f"Error reading file: {e}")
+        print(f"Error reading/unzipping file: {e}")
+        sys.exit(1)
+    
+    if not content:
+        print("No content extracted")
         sys.exit(1)
 
-    # 2. Define LangExtract Task (Example: Extracting key financial events or summary)
+    # 2. Define LangExtract Task
     # The user didn't specify the exact prompt, so I'll use a generic "Major Business Events" prompt.
     prompt = textwrap.dedent("""\
         Extract major corporate events, financial announcements, or key decisions mentioned in the document.

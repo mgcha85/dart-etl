@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+
+# Go
+/bin/
+/dist/
+main
+dart-etl
+*.exe
+*.test
+*.prof
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+python/venv/
+python/.venv/
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Project Specific
+storage/
