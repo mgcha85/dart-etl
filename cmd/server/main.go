@@ -233,12 +233,18 @@ func runContentExtraction() {
 	// Assuming execution from project root
 	cwd, _ := os.Getwd()
 	pythonScript := filepath.Join(cwd, "python", "extractor.py")
+	pythonExec := filepath.Join(cwd, ".venv", "bin", "python")
+
+	// Fallback to system python if venv missing (dev convenience)
+	if _, err := os.Stat(pythonExec); os.IsNotExist(err) {
+		pythonExec = "python3"
+	}
 
 	for _, doc := range pendingDocs {
 		log.Printf("Running extraction for RceptNo: %s\n", doc.RceptNo)
 
 		// Call Python script
-		cmd := exec.Command("python3", pythonScript, "--rcept_no", doc.RceptNo, "--db_path", dbPath, "--file", doc.StorageURI)
+		cmd := exec.Command(pythonExec, pythonScript, "--rcept_no", doc.RceptNo, "--db_path", dbPath, "--file", doc.StorageURI)
 
 		// Capture output for debug
 		output, err := cmd.CombinedOutput()

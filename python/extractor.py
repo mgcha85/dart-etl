@@ -106,8 +106,27 @@ def main():
         Focus on objective facts: dates, amounts, parties involved, and the nature of the event.
     """)
     
-    # Placeholder example - usually we should have domain specific examples
-    examples = [] 
+    # LangExtract requires examples for reliability
+    examples = []
+    if lx:
+        from langextract.data import ExampleData, Extraction
+        examples = [
+            ExampleData(
+                text="The company's revenue for Q3 2023 was 10.5 trillion KRW with an operating profit of 1.2 trillion KRW.",
+                extractions=[
+                    Extraction(
+                        extraction_class="financial_event",
+                        extraction_text="revenue for Q3 2023 was 10.5 trillion KRW",
+                        attributes={"metric": "revenue", "value": "10.5 trillion KRW", "period": "Q3 2023"}
+                    ),
+                    Extraction(
+                        extraction_class="financial_event",
+                        extraction_text="operating profit of 1.2 trillion KRW",
+                        attributes={"metric": "operating_profit", "value": "1.2 trillion KRW", "period": "Q3 2023"}
+                    )
+                ]
+            )
+        ]
 
     # 3. Run Extraction
     try:
