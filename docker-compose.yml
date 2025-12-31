@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  dart-etl:
+    build: .
+    container_name: dart-etl-app
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./storage:/app/storage
+      - ./dart.db:/app/dart.db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
