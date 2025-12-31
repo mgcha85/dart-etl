@@ -46,27 +46,32 @@ You can run the built-in verification script to test the entire pipeline end-to-
 
 ---
 
-## 🔍 Process Explanation & Data Journey
+## 🔍 ETL 파이프라인 설계 (운영 관점)
 
-### 1. Filing List Collection
-The Go scheduler periodically fetches the daily filing list from DART.
-- **Data**: JSON metadata (Receipt No, Corp Name, Report Name, etc.)
-- **Storage**: Saved to `filings` table.
+본 프로젝트는 데이터의 무결성과 복구 가능성을 고려하여 설계되었습니다.
 
-### 2. Document Acquisition
-For each new filing, the system downloads the raw disclosure document.
-- **Raw Data**: A `.zip` archive containing a complex `document.xml`.
-- **Location**: Stored in `./storage/{rcept_no}.zip`.
-- **Internal State**: Recorded in `filing_documents` with a hash for integrity.
+### **Step 0) 기업 코드 수집 (초기 1회 + 주기적 업데이트)**
+DART에서 제공하는 고유번호 ZIP을 내려받아 `corps` 테이블에 적재합니다.
+- **주기**: 초기 1회 필수 실행 + 주 1회 자동 갱신 (`@weekly`).
+- **방식**: 업서트(Upsert)를 통해 기존 정보를 최신 상태로 유지합니다.
 
-### 3. Intelligence Extraction (LangExtract)
-The Go server triggers the Python `extractor.py` worker.
-- **Input**: Raw `.zip` path + Metadata.
-- **Logic**:
-    1. Unpacks the ZIP and extracts the primary XML content.
-    2. Passes the text to **LangExtract** with a specialized prompt.
-    3. Gemini analyzes the document to find specific events (financials, mergers, board changes).
-- **Result**: Structured JSON events saved to `extracted_events`.
+### **Step 1) 공시 목록 증분 수집 (주기적)**
+최근 공시 목록을 가져와 `filings` 테이블에 저장합니다.
+- **주기**: 매 시간 실행 (`@hourly`).
+- **누락 방지**: 수집 시 **최근 3일치** 데이터를 중복 조회하여 네트워크 지연이나 서비스 장애 시에도 데이터 누락이 없도록 보장합니다.
+- **중복 방지**: `rcept_no`(접수번호)를 Primary Key로 사용하여 멱등성(Idempotency)을 가집니다.
+
+### **Step 2) 원문 다운로드 (비동기 작업)**
+수집된 메타데이터를 기반으로 공시 서류 본문을 내려받습니다.
+- **주기**: 5분마다 실행 (`@every 5m`).
+- **저장**: 다운로드된 ZIP/XML 파일은 지정된 로컬 `./storage` 또는 Object Storage 경로에 저장됩니다.
+- **상태 관리**: `filing_documents` 테이블에 파일 경로와 해시값을 기록하여 관리합니다.
+
+### **Step 3) LangExtract 구조화 (비동기)**
+내려받은 원문 텍스트를 LLM(Gemini)을 통해 분석하고 구조화된 데이터로 추출합니다.
+- **주기**: 5분마다 실행 (`@every 5m`).
+- **지능화**: **LangExtract** 라이브러리를 사용해 스키마 기반의 이벤트(재무 실적, M&A 등)를 추출합니다.
+- **실패 복구**: 추출 실패 시 **최대 3회 자동 재시도** 로직을 포함하여 일시적인 API 장애 등에 대응합니다.
 
 ---
 

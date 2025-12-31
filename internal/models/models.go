@@ -34,6 +34,7 @@ type FilingDocument struct {
 	SHA256      string     `gorm:"column:sha256;type:varchar(64)" json:"sha256"`
 	FetchedAt   time.Time  `gorm:"autoCreateTime" json:"fetched_at"`
 	ExtractedAt *time.Time `gorm:"column:extracted_at" json:"extracted_at"`
+	RetryCount  int        `gorm:"column:retry_count;default:0" json:"retry_count"`
 }
 
 // ExtractedEvent represents structured data parsed from filings

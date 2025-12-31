@@ -54,25 +54,28 @@ func main() {
 
 	// 3.1 Filing List Collector (Every hour)
 	c.AddFunc("@hourly", func() {
-		log.Println("[Job] Fetching recent filings...")
-		// Fetch for today
-		today := time.Now().Format("20060102")
-		filings, err := client.GetDailyFilings(today)
-		if err != nil {
-			log.Printf("Error fetching filings: %v\n", err)
-			return
-		}
+		log.Println("[Job] Fetching recent filings (3-day lookback)...")
+		for i := 0; i < 3; i++ {
+			targetDate := time.Now().AddDate(0, 0, -i).Format("20060102")
+			log.Printf("Fetching filings for %s...", targetDate)
 
-		if len(filings) > 0 {
-			result := database.DB.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "rcept_no"}},
-				DoUpdates: clause.AssignmentColumns([]string{"corp_code", "corp_name", "report_nm", "rcept_dt", "flr_nm", "rm", "dcm_no"}),
-			}).Create(&filings)
+			filings, err := client.GetDailyFilings(targetDate)
+			if err != nil {
+				log.Printf("Error fetching filings for %s: %v\n", targetDate, err)
+				continue
+			}
 
-			if result.Error != nil {
-				log.Printf("Error saving filings: %v\n", result.Error)
-			} else {
-				log.Printf("Saved %d filings\n", len(filings))
+			if len(filings) > 0 {
+				result := database.DB.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "rcept_no"}},
+					DoUpdates: clause.AssignmentColumns([]string{"corp_code", "corp_name", "report_nm", "rcept_dt", "flr_nm", "rm", "dcm_no"}),
+				}).Create(&filings)
+
+				if result.Error != nil {
+					log.Printf("Error node index %d: %v\n", i, result.Error)
+				} else {
+					log.Printf("Processed %d filings for %s\n", len(filings), targetDate)
+				}
 			}
 		}
 	})
@@ -212,9 +215,9 @@ func calculateSHA256(path string) (string, error) {
 }
 
 func runContentExtraction() {
-	// Find documents that haven't been extracted yet
+	// Find documents that haven't been extracted yet and have < 3 retries
 	var pendingDocs []models.FilingDocument
-	err := database.DB.Where("extracted_at IS NULL").Limit(5).Find(&pendingDocs).Error
+	err := database.DB.Where("extracted_at IS NULL AND retry_count < 3").Limit(5).Find(&pendingDocs).Error
 	if err != nil {
 		log.Printf("Error checking for pending extractions: %v\n", err)
 		return
@@ -249,7 +252,9 @@ func runContentExtraction() {
 		// Capture output for debug
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("Extraction failed for %s: %v\nOutput: %s\n", doc.RceptNo, err, string(output))
+			log.Printf("Extraction failed for %s (Retry %d): %v\nOutput: %s\n", doc.RceptNo, doc.RetryCount+1, err, string(output))
+			// Increment retry count
+			database.DB.Model(&doc).Update("retry_count", doc.RetryCount+1)
 			continue
 		}
 
