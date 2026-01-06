@@ -10,11 +10,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"dart-etl/internal/api"
 	"dart-etl/internal/database"
 	"dart-etl/internal/models"
 	"dart-etl/pkg/dart"
-
-	"os/exec"
 
 	"github.com/joho/godotenv"
 	"github.com/robfig/cron/v3"
@@ -36,6 +35,15 @@ func main() {
 	database.InitDB(dbPath)
 
 	client := dart.NewClient(apiKey)
+
+	// Start API Server
+	go func() {
+		log.Println("Starting API Server on :8080")
+		srv := api.NewServer(database.DB)
+		if err := srv.Start("8080"); err != nil {
+			log.Fatalf("API Server failed: %v", err)
+		}
+	}()
 
 	// 2. Initial Setup: Corp Codes
 	go func() {
@@ -90,12 +98,6 @@ func main() {
 	c.AddFunc("@weekly", func() {
 		log.Println("[Job] Updating Corp Codes...")
 		updateCorpCodes(client)
-	})
-
-	// 3.4 Content Extraction (Every 5 minutes)
-	c.AddFunc("@every 5m", func() {
-		log.Println("[Job] Starting Content Extraction...")
-		runContentExtraction()
 	})
 
 	c.Start()
@@ -212,54 +214,4 @@ func calculateSHA256(path string) (string, error) {
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func runContentExtraction() {
-	// Find documents that haven't been extracted yet and have < 3 retries
-	var pendingDocs []models.FilingDocument
-	err := database.DB.Where("extracted_at IS NULL AND retry_count < 3").Limit(5).Find(&pendingDocs).Error
-	if err != nil {
-		log.Printf("Error checking for pending extractions: %v\n", err)
-		return
-	}
-
-	if len(pendingDocs) == 0 {
-		return
-	}
-
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		dbPath = "dart.db"
-	}
-
-	// Must be absolute path for python script usually, or relative from execution dir
-	// Assuming execution from project root
-	cwd, _ := os.Getwd()
-	pythonScript := filepath.Join(cwd, "python", "extractor.py")
-	pythonExec := filepath.Join(cwd, ".venv", "bin", "python")
-
-	// Fallback to system python if venv missing (dev convenience)
-	if _, err := os.Stat(pythonExec); os.IsNotExist(err) {
-		pythonExec = "python3"
-	}
-
-	for _, doc := range pendingDocs {
-		log.Printf("Running extraction for RceptNo: %s\n", doc.RceptNo)
-
-		// Call Python script
-		cmd := exec.Command(pythonExec, pythonScript, "--rcept_no", doc.RceptNo, "--db_path", dbPath, "--file", doc.StorageURI)
-
-		// Capture output for debug
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Printf("Extraction failed for %s (Retry %d): %v\nOutput: %s\n", doc.RceptNo, doc.RetryCount+1, err, string(output))
-			// Increment retry count
-			database.DB.Model(&doc).Update("retry_count", doc.RetryCount+1)
-			continue
-		}
-
-		log.Printf("Extraction success for %s. Output: %s\n", doc.RceptNo, string(output))
-		// The python script updates the DB directly, so we don't need to update ExtractedAt here if the script does it.
-		// Our script does update it.
-	}
 }
