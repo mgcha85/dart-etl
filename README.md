@@ -26,12 +26,12 @@ graph LR
     DB_PATH=dart.db
     STORAGE_DIR=./storage
     ```
-2.  **Run Server**:
+2.  **Run Server (Podman)**:
     ```bash
-    go mod tidy
     ./start.sh
     ```
-    The server will start on port `8080` in the background. Logs are written to `logs/server.log`.
+    This builds the container image and starts it in the background.
+    Use `podman logs dart-etl-app -f` to view logs.
 
 3.  **Stop Server**:
     ```bash
@@ -39,6 +39,7 @@ graph LR
     ```
 
 ---
+
 
 ## � API Documentation
 
