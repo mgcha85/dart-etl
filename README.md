@@ -29,9 +29,14 @@ graph LR
 2.  **Run Server**:
     ```bash
     go mod tidy
-    go run cmd/server/main.go
+    ./start.sh
     ```
-    The server will start on port `8080`.
+    The server will start on port `8080` in the background. Logs are written to `logs/server.log`.
+
+3.  **Stop Server**:
+    ```bash
+    ./stop.sh
+    ```
 
 ---
 
